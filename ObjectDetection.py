@@ -1,37 +1,21 @@
 import cv2
-import matplotlib.pyplot as plt
 import cvlib as cv
-import urllib.request
-import numpy as np
 from cvlib.object_detection import draw_bbox
-import concurrent.futures
 import time
 import requests
+import urllib.request
+import numpy as np
 
 url = "http://192.168.1.32/cam-hi.jpg"
-im = None
 bottleDetected = False
-
-
-def run1():
-    cv2.namedWindow("live transmission", cv2.WINDOW_AUTOSIZE)
-    while True:
-        img_resp = urllib.request.urlopen(url)
-        imgnp = np.array(bytearray(img_resp.read()), dtype=np.uint8)
-        im = cv2.imdecode(imgnp, -1)
-
-        cv2.imshow("live transmission", im)
-        key = cv2.waitKey(5)
-        if key == ord("q"):
-            break
-
-    cv2.destroyAllWindows()
+detection_count = 0
 
 
 def run2():
-    global bottleDetected  # Declare as a global variable
-    cv2.namedWindow("detection", cv2.WINDOW_AUTOSIZE)
+    global bottleDetected, detection_count
+
     while True:
+        # Retrieve image from the URL
         img_resp = urllib.request.urlopen(url)
         imgnp = np.array(bytearray(img_resp.read()), dtype=np.uint8)
         im = cv2.imdecode(imgnp, -1)
@@ -46,10 +30,11 @@ def run2():
             if obj_label == "bottle" and conf[i] > 0.5
         ]
 
-        if len(bottle_indexes) > 0:
-            # Bottle detected
-            bottleDetected = True
+        # Update the bottle detection flag and count
+        bottleDetected = len(bottle_indexes) > 0
+        detection_count += 1
 
+        if bottleDetected:
             # Draw bounding boxes and labels only for plastic bottles
             bottle_bbox = [bbox[i] for i in bottle_indexes]
             im = draw_bbox(
@@ -59,33 +44,33 @@ def run2():
                 [conf[i] for i in bottle_indexes],
             )
 
+            response = requests.get("http://192.168.1.32/bottle-detected")
+            if response.status_code == 200:
+                time.sleep(2)
+                print("Notification sent to ESP32")
+        else:
+            print("No plastic bottle detected")
+
         cv2.imshow("detection", im)
-        key = cv2.waitKey(5)
+        key = cv2.waitKey(1)
         if key == ord("q"):
             break
 
     cv2.destroyAllWindows()
 
 
-def playBuzzer():
-    # Turn on the buzzer
-    print("Bottle is Detected")
-    # Code for activating the buzzer
-
-    # Send a notification to the ESP32
-    response = requests.get("http://192.168.1.100/bottle-detected")
-    if response.status_code == 200:
-        print("Notification sent to ESP32")
-
-
 def loop():
-    global bottleDetected  # Declare as a global variable
+    global bottleDetected, detection_count
     while True:
         # Check for the bottle detection condition
         if bottleDetected:
+            time.sleep(3)
             print("Bottle is detected")
-            playBuzzer()
-            bottleDetected = False  # Reset the variable after playing the buzzer
+            print("Impulse Rate:", detection_count / 3, "detections per second")
+            bottleDetected = (
+                False  # Reset the variable after displaying the impulse rate
+            )
+            detection_count = 0  # Reset the detection count
         else:
             print("No bottle detected")
 
@@ -93,16 +78,8 @@ def loop():
         time.sleep(0.1)
 
 
-def detectBottle():
-    global bottleDetected
-    if bottleDetected:
-        print("Bottle detected")
-
-
 if __name__ == "__main__":
-    print("started")
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        f1 = executor.submit(run1)
-        f2 = executor.submit(run2)
+    print("Started")
+    run2()  # Run the detection function
 
     loop()  # Start the loop

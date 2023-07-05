@@ -124,6 +124,10 @@ void loop()
   if (bottleDetected) {
     playBuzzer();
     digitalWrite(LED_PIN, HIGH); // Turn on the LED
+    delay (1000);
+    digitalWrite(LED_PIN, LOW);
+    delay (1000);
+    
     bottleDetected = false; // Reset the variable after playing the buzzer
   } else {
     digitalWrite(LED_PIN, LOW); // Turn off the LED
